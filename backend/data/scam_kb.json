@@ -1,0 +1,8 @@
+{
+  "scam_types": [
+    {"key": "upi", "title": "UPI payment scam", "examples": ["UPI KYC update", "Send money to release refund"]},
+    {"key": "kyc", "title": "KYC update scam", "examples": ["KYC pending", "Account will be blocked"]},
+    {"key": "police", "title": "Police/Legal threat", "examples": ["Police complaint", "Court notice"]},
+    {"key": "job", "title": "Job/Work-from-home", "examples": ["Pay registration fee", "Daily earnings"]}
+  ]
+}
