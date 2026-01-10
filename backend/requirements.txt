@@ -5,3 +5,5 @@ pydantic-settings==2.7.0
 langdetect==1.0.9
 tldextract==5.1.2
 httpx==0.28.1
+python-whois==0.9.5
+tenacity==8.5.0

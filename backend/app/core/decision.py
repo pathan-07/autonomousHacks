@@ -32,10 +32,25 @@ def decide(agent_results: list[AgentResult]) -> Decision:
 
     base = round(weighted_sum / max(1e-9, weight_total))
 
+    # Guardrail: if a Gemini model strongly flags a scam, don't let low-signal
+    # heuristic agents average it down to "Safe".
+    gemini_scores: list[int] = []
+    for r in usable:
+        name = (r.agent or "").lower()
+        if "geminiagent" in name:
+            gemini_scores.append(max(0, min(100, int(r.score))))
+
     # Synergy boost: high-pressure text + risky link patterns.
     all_reasons: list[str] = []
     for r in usable:
         all_reasons.extend(r.reasons)
+
+    # If Gemini provides a concrete defensive suggestion, prefer that as the
+    # recommended action (users perceive this as "better" than generic text).
+    advice_lines: list[str] = []
+    for x in all_reasons:
+        if isinstance(x, str) and x.strip().lower().startswith("advice:"):
+            advice_lines.append(x.split(":", 1)[1].strip())
 
     has_urgency = any("Urgency/deadline" in x for x in all_reasons)
     has_link_shortener = any("Link shortener" in x for x in all_reasons)
@@ -46,6 +61,13 @@ def decide(agent_results: list[AgentResult]) -> Decision:
         boost += 20
 
     avg = min(100, base + boost)
+
+    if gemini_scores:
+        gemini_max = max(gemini_scores)
+        if gemini_max >= 80:
+            avg = max(avg, gemini_max)
+        elif gemini_max >= 60:
+            avg = max(avg, min(75, gemini_max))
 
     # Confidence: if multiple agents agree on high score, raise.
     high_votes = sum(1 for s in scores if s >= 60)
@@ -66,6 +88,10 @@ def decide(agent_results: list[AgentResult]) -> Decision:
     else:
         level = "High"
         action = "Do not pay/click; block/report; contact your bank/app support"
+
+    if level != "Safe" and advice_lines:
+        # Clamp length to keep UI tidy.
+        action = (advice_lines[0] or action).strip()[:220]
 
     reasons = all_reasons
 

@@ -36,11 +36,22 @@ class GeminiAgent(BaseAgent):
             )
 
         score = int(verdict.get("risk_score", 0))
-        confidence = str(verdict.get("confidence", "Low"))
-        reasons = list(verdict.get("reasons", []))
+        category = str(verdict.get("category", "")).strip()
+        reasoning = str(verdict.get("reasoning", "")).strip()
+        advice = str(verdict.get("advice", "")).strip()
+
+        reasons: list[str] = []
+        if category or reasoning:
+            combined = (f"{category}: {reasoning}" if category else reasoning).strip()
+            if combined:
+                reasons.append(combined)
+        if advice:
+            reasons.append(f"Advice: {advice}")
 
         # Keep reasons tight so this agent doesn't dominate the combined output.
         reasons = [r for r in reasons if isinstance(r, str) and r.strip()][0:8]
+
+        confidence = "High" if score >= 70 else "Medium" if score >= 35 else "Low"
 
         return AgentResult(
             agent=self.name,

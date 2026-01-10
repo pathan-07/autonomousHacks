@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     gemini_max_models: int = 3
     gemini_temperature: float = 0.2
     gemini_top_p: float = 0.9
-    gemini_max_output_tokens: int = 300
+    # Gemini 2.x may spend a significant token budget on internal reasoning;
+    # keep this high enough so the final JSON isn't truncated.
+    gemini_max_output_tokens: int = 900
     gemini_system_prompt_path: str = "./prompts/gemini_1_5_system.txt"
     gemini_system_prompt: str | None = None
 
@@ -28,14 +30,23 @@ class Settings(BaseSettings):
         if self.gemini_system_prompt and self.gemini_system_prompt.strip():
             return self.gemini_system_prompt.strip()
 
-        p = Path(self.gemini_system_prompt_path)
-        if not p.is_absolute():
-            p = Path.cwd() / p
+        configured = Path(self.gemini_system_prompt_path)
+        candidates: list[Path] = []
+        if configured.is_absolute():
+            candidates.append(configured)
+        else:
+            # Resolve relative to the backend/ directory first so the prompt is
+            # found even when the process is started from a different CWD.
+            backend_dir = Path(__file__).resolve().parents[2]
+            candidates.append(backend_dir / configured)
+            candidates.append(Path.cwd() / configured)
 
-        try:
-            return p.read_text(encoding="utf-8").strip()
-        except FileNotFoundError:
-            return ""
+        for p in candidates:
+            try:
+                return p.read_text(encoding="utf-8").strip()
+            except FileNotFoundError:
+                continue
+        return ""
 
     def get_gemini_models(self) -> list[str]:
         """Returns a de-duplicated list of Gemini model ids to use for ensembling."""
