@@ -1,0 +1,12 @@
+# Secrets
+.env
+
+# Virtual environments
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local data (optional; keep if you don't want DB checked in)
+# data/

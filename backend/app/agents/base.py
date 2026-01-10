@@ -9,6 +9,7 @@ class AgentResult:
     score: int
     confidence: str
     reasons: list[str]
+    ok: bool = True
 
 
 class BaseAgent:

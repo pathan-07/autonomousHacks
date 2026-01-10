@@ -13,15 +13,28 @@ class Decision:
 
 
 def decide(agent_results: list[AgentResult]) -> Decision:
-    if not agent_results:
+    usable = [r for r in (agent_results or []) if getattr(r, "ok", True)]
+    if not usable:
         return Decision(0, "Safe", "Low", ["No signals"], "Proceed normally")
 
-    scores = [max(0, min(100, r.score)) for r in agent_results]
-    base = round(sum(scores) / len(scores))
+    # Weighted average: LLM agents get a slight weight bump vs heuristic agents.
+    weighted_sum = 0.0
+    weight_total = 0.0
+    scores: list[int] = []
+    for r in usable:
+        s = max(0, min(100, int(r.score)))
+        scores.append(s)
+
+        name = (r.agent or "").lower()
+        w = 1.2 if "geminiagent" in name or name.startswith("gemini") else 1.0
+        weighted_sum += s * w
+        weight_total += w
+
+    base = round(weighted_sum / max(1e-9, weight_total))
 
     # Synergy boost: high-pressure text + risky link patterns.
     all_reasons: list[str] = []
-    for r in agent_results:
+    for r in usable:
         all_reasons.extend(r.reasons)
 
     has_urgency = any("Urgency/deadline" in x for x in all_reasons)
@@ -36,9 +49,10 @@ def decide(agent_results: list[AgentResult]) -> Decision:
 
     # Confidence: if multiple agents agree on high score, raise.
     high_votes = sum(1 for s in scores if s >= 60)
-    if high_votes >= 2:
+    spread = (max(scores) - min(scores)) if scores else 0
+    if high_votes >= 2 and spread <= 25:
         conf = "High"
-    elif high_votes == 1:
+    elif high_votes >= 1 and spread <= 45:
         conf = "Medium"
     else:
         conf = "Low"

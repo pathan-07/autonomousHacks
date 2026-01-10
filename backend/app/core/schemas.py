@@ -18,12 +18,21 @@ class AnalyzeRequest(BaseModel):
     metadata: AnalyzeMetadata | None = None
 
 
+class AgentBreakdown(BaseModel):
+    agent: str
+    score: int
+    confidence: str
+    reasons: list[str]
+    ok: bool = True
+
+
 class AnalyzeResponse(BaseModel):
     risk_score: int
     risk_level: str
     confidence: str
     reasons: list[str]
     recommended_action: str
+    agent_results: list[AgentBreakdown] | None = None
 
 
 class FeedbackRequest(BaseModel):
