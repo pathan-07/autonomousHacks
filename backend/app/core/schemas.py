@@ -26,6 +26,13 @@ class AgentBreakdown(BaseModel):
     ok: bool = True
 
 
+class ReportDraft(BaseModel):
+    is_reportable: bool = True
+    portal_url: str
+    email_subject: str
+    email_body: str
+
+
 class AnalyzeResponse(BaseModel):
     risk_score: int
     risk_level: str
@@ -33,6 +40,7 @@ class AnalyzeResponse(BaseModel):
     reasons: list[str]
     recommended_action: str
     agent_results: list[AgentBreakdown] | None = None
+    report_data: ReportDraft | None = None
 
 
 class FeedbackRequest(BaseModel):

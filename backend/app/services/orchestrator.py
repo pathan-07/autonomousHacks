@@ -3,11 +3,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from app.agents.base import AgentResult
 from app.agents.gemini_agent import GeminiAgent
 from app.agents.gemini_image_agent import GeminiImageAgent
+from app.agents.reporting_agent import ReportingAgent
 from app.agents.text_agent import TextAgent
 from app.agents.link_agent import LinkAgent
 from app.agents.link_reputation_agent import LinkReputationAgent
 from app.core.schemas import AnalyzeRequest
 from app.core.settings import settings
+
+
+def maybe_generate_report_data(input_text: str, result: dict) -> dict | None:
+    if result.get("risk_score", 0) < 75:
+        return None
+    reporter = ReportingAgent()
+    return reporter.generate_draft(input_text, result)
 
 
 def build_agents() -> list[object]:

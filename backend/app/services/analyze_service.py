@@ -6,7 +6,7 @@ from app.core.schemas import AgentBreakdown, AnalyzeRequest, AnalyzeResponse
 from app.core.decision import decide
 from app.core.redaction import redact_analyze_payload
 from app.db.sqlite import cleanup_old_interactions, get_cached_analysis, insert_interaction, upsert_cached_analysis
-from app.services.orchestrator import run_agents
+from app.services.orchestrator import maybe_generate_report_data, run_agents
 
 
 def _hash_request(redacted: AnalyzeRequest) -> str:
@@ -90,5 +90,19 @@ def analyze_request(payload: AnalyzeRequest) -> AnalyzeResponse:
 
     if response.confidence not in {"Low", "Medium", "High"}:
         response.confidence = "Low"
+
+    # --- NEW REPORTING LOGIC ---
+    # Draft a complaint only for High/Severe risk scores.
+    input_text = (redacted.text or "").strip()
+    if redacted.links:
+        links_block = "\n".join(redacted.links)
+        input_text = f"{input_text}\n\nLinks:\n{links_block}".strip()
+
+    report_result = {
+        "risk_score": response.risk_score,
+        "category": "Online Fraud",
+        "reasoning": "; ".join(response.reasons) if response.reasons else "Suspicious activity detected by AI.",
+    }
+    response.report_data = maybe_generate_report_data(input_text, report_result)
 
     return response

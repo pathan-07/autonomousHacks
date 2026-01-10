@@ -1,19 +1,33 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import router
+from app.api.routes import router as api_router
 from app.core.settings import settings
 from app.db.sqlite import init_db
 
-
-def create_app() -> FastAPI:
-    app = FastAPI(title="AI Scam Detection API", version="0.1.0")
-
-    @app.on_event("startup")
-    def _startup() -> None:
-        init_db()
-
-    app.include_router(router)
-    return app
+app = FastAPI(title="ScamShield API")
 
 
-app = create_app()
+@app.on_event("startup")
+def _startup() -> None:
+    init_db()
+
+
+# --- CRITICAL FIX FOR CLOUD RUN ---
+# Allow your Frontend to talk to this Backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows ALL origins (Safe for Hackathons)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include your analysis routes
+app.include_router(api_router)
+
+
+@app.get("/")
+def health_check():
+    """Simple check to see if Backend is running"""
+    return {"status": "online", "service": "ScamShield Agent Core"}
