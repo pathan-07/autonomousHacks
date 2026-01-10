@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { uploadToCloudinary } from "../lib/uploadToCloudinary";
 
 type AnalyzeResponse = {
   requestId: string;
@@ -50,11 +51,17 @@ function formatLabel(label: AnalyzeResponse["overall"]["label"]) {
 
 export default function Home() {
   const [text, setText] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
 
-  const canAnalyze = useMemo(() => text.trim().length > 0 && !isLoading, [text, isLoading]);
+  const canAnalyze = useMemo(
+    () => (text.trim().length > 0 || !!imageFile || !!uploadedImageUrl) && !isLoading && !isUploading,
+    [text, isLoading, isUploading, imageFile, uploadedImageUrl]
+  );
 
   async function onAnalyze() {
     setError(null);
@@ -62,10 +69,19 @@ export default function Home() {
     setIsLoading(true);
 
     try {
+      let image_url: string | undefined = uploadedImageUrl ?? undefined;
+
+      if (!image_url && imageFile) {
+        setIsUploading(true);
+        const uploaded = await uploadToCloudinary(imageFile);
+        image_url = uploaded.secureUrl;
+        setUploadedImageUrl(uploaded.secureUrl);
+      }
+
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, image_url }),
       });
 
       const data = (await res.json()) as unknown;
@@ -83,6 +99,7 @@ export default function Home() {
       setError(e instanceof Error ? e.message : "Network error");
     } finally {
       setIsLoading(false);
+      setIsUploading(false);
     }
   }
 
@@ -121,6 +138,35 @@ export default function Home() {
               placeholder="Example: Your account will be suspended today. Verify immediately: https://..."
             />
 
+            <div className="mt-4">
+              <div className="text-sm font-medium">Optional screenshot</div>
+              <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                Upload a screenshot (JPEG/PNG). It will be uploaded to Cloudinary and analyzed by the Python backend.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg"
+                  disabled={isLoading || isUploading}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setImageFile(f);
+                    setUploadedImageUrl(null);
+                  }}
+                />
+                {uploadedImageUrl ? (
+                  <a
+                    className="text-xs text-blue-600 underline dark:text-blue-400"
+                    href={uploadedImageUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Uploaded image link
+                  </a>
+                ) : null}
+              </div>
+            </div>
+
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -135,6 +181,8 @@ export default function Home() {
                 className="h-10 rounded-full border border-black/10 px-5 text-sm font-medium text-foreground disabled:opacity-50 dark:border-white/15"
                 onClick={() => {
                   setText("");
+                  setImageFile(null);
+                  setUploadedImageUrl(null);
                   setResult(null);
                   setError(null);
                 }}
@@ -143,7 +191,7 @@ export default function Home() {
                 Clear
               </button>
               <div className="text-xs text-zinc-600 dark:text-zinc-400">
-                {isLoading ? "Running 4 agents…" : ""}
+                {isUploading ? "Uploading image…" : isLoading ? "Analyzing…" : ""}
               </div>
             </div>
 

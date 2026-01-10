@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from app.agents.base import AgentResult
 from app.agents.gemini_agent import GeminiAgent
+from app.agents.gemini_image_agent import GeminiImageAgent
 from app.agents.text_agent import TextAgent
 from app.agents.link_agent import LinkAgent
 from app.agents.link_reputation_agent import LinkReputationAgent
@@ -15,6 +16,7 @@ def build_agents() -> list[object]:
     if settings.gemini_api_key:
         for model in settings.get_gemini_models():
             agents.append(GeminiAgent(model=model))
+            agents.append(GeminiImageAgent(model=model))
 
     return agents
 

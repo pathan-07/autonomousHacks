@@ -24,6 +24,13 @@ type BackendAnalyzeResponse = {
   confidence: "Low" | "Medium" | "High";
   reasons: string[];
   recommended_action: string;
+  agent_results?: Array<{
+    agent: string;
+    score: number;
+    confidence: string;
+    reasons: string[];
+    ok: boolean;
+  }>;
 };
 
 function clamp(n: number, min: number, max: number) {
@@ -238,8 +245,16 @@ export async function POST(req: Request) {
       ? ((payload as { text: string }).text as string)
       : "";
 
-  if (text.trim().length === 0) {
-    return NextResponse.json({ error: "Missing 'text'" }, { status: 400 });
+  const imageUrl =
+    typeof (payload as { image_url?: unknown })?.image_url === "string"
+      ? ((payload as { image_url: string }).image_url as string)
+      : "";
+
+  if (text.trim().length === 0 && imageUrl.trim().length === 0) {
+    return NextResponse.json(
+      { error: "Missing 'text' or 'image_url'" },
+      { status: 400 }
+    );
   }
 
   if (text.length > 10_000) {
@@ -267,7 +282,7 @@ export async function POST(req: Request) {
           ? { "X-API-Key": process.env.BACKEND_API_KEY }
           : {}),
       },
-      body: JSON.stringify({ text, links }),
+      body: JSON.stringify({ text, links, image_url: imageUrl || undefined }),
     });
 
     if (!resp.ok) {

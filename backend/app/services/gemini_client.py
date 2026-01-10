@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any
 
 import httpx
@@ -8,6 +9,30 @@ from app.core.settings import settings
 
 class GeminiError(RuntimeError):
     pass
+
+
+_DATA_URL_RE = re.compile(r"^data:(?P<mime>[-\w.+/]+);base64,(?P<data>[A-Za-z0-9+/=\s]+)$", re.IGNORECASE)
+
+
+def _image_part_from_base64(image_base64: str) -> dict[str, Any]:
+    s = (image_base64 or "").strip()
+    if not s:
+        raise GeminiError("Empty image_base64")
+
+    mime = "image/jpeg"
+    data = s
+
+    m = _DATA_URL_RE.match(s)
+    if m:
+        mime = (m.group("mime") or "image/jpeg").strip()
+        data = (m.group("data") or "").strip()
+
+    # Remove any whitespace/newlines in base64
+    data = "".join(data.split())
+    if not data:
+        raise GeminiError("Empty image data")
+
+    return {"inlineData": {"mimeType": mime, "data": data}}
 
 
 def _extract_text_from_response(resp_json: dict[str, Any]) -> str:
@@ -30,6 +55,19 @@ def _extract_text_from_response(resp_json: dict[str, Any]) -> str:
     return out
 
 
+def _extract_json_from_response(resp_json: dict[str, Any]) -> dict[str, Any]:
+    """Gemini may return JSON in different shapes depending on settings."""
+    # When responseMimeType is application/json, the text part typically contains JSON.
+    txt = _extract_text_from_response(resp_json)
+    try:
+        data = json.loads(txt)
+    except json.JSONDecodeError as e:
+        raise GeminiError(f"Model did not return valid JSON: {e}")
+    if not isinstance(data, dict):
+        raise GeminiError("Model JSON is not an object")
+    return data
+
+
 def generate_scam_verdict_json(
     *,
     text: str,
@@ -40,6 +78,7 @@ def generate_scam_verdict_json(
     temperature: float | None = None,
     top_p: float | None = None,
     max_output_tokens: int | None = None,
+    image_base64_list: list[str] | None = None,
 ) -> dict[str, Any]:
     if not settings.gemini_api_key:
         raise GeminiError("GEMINI_API_KEY not configured")
@@ -70,9 +109,15 @@ def generate_scam_verdict_json(
         },
     }
 
+    parts: list[dict[str, Any]] = [{"text": user_prompt}]
+
+    if image_base64_list:
+        for b64 in image_base64_list:
+            parts.append(_image_part_from_base64(b64))
+
     payload: dict[str, Any] = {
         "systemInstruction": {"parts": [{"text": resolved_system_prompt}]},
-        "contents": [{"role": "user", "parts": [{"text": user_prompt}]}],
+        "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {
             "temperature": settings.gemini_temperature if temperature is None else float(temperature),
             "topP": settings.gemini_top_p if top_p is None else float(top_p),
@@ -90,14 +135,4 @@ def generate_scam_verdict_json(
     if r.status_code >= 400:
         raise GeminiError(f"Gemini API error {r.status_code}: {r.text[:500]}")
 
-    txt = _extract_text_from_response(r.json())
-
-    try:
-        data = json.loads(txt)
-    except json.JSONDecodeError as e:
-        raise GeminiError(f"Model did not return valid JSON: {e}")
-
-    if not isinstance(data, dict):
-        raise GeminiError("Model JSON is not an object")
-
-    return data
+    return _extract_json_from_response(r.json())
