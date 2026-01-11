@@ -160,26 +160,26 @@ def generate_scam_verdict_json(
     # JSON mode + schema: strongly reduces format drift.
     response_schema: dict[str, Any] = {
         "type": "object",
-        "required": ["risk_score", "risk_level", "category", "reasoning", "advice"],
+        "required": [
+            "risk_score",
+            "risk_level",
+            "category",
+            "reasoning",
+            "advice",
+            "advice_hindi",
+            "scam_type_local",
+        ],
         "properties": {
             "risk_score": {"type": "integer", "minimum": 0, "maximum": 100},
-            "risk_level": {"type": "string", "enum": ["High", "Medium", "Low"]},
-            "category": {
+            "risk_level": {
                 "type": "string",
-                "enum": [
-                    "Phishing",
-                    "Lottery",
-                    "KYC Fraud",
-                    "Job Scam",
-                    "Sextortion",
-                    "Fake Payment",
-                    "Malware",
-                    "Impersonation",
-                    "Legitimate",
-                ],
+                "enum": ["High", "Medium", "Low", "Safe", "Caution", "Critical"],
             },
+            "category": {"type": "string"},
             "reasoning": {"type": "string"},
             "advice": {"type": "string"},
+            "advice_hindi": {"type": "string"},
+            "scam_type_local": {"type": "string"},
         },
     }
 

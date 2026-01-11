@@ -18,34 +18,32 @@ class GeminiAgent(BaseAgent):
                 metadata=(payload.metadata.model_dump() if payload.metadata else None),
                 model=self.model,
             )
-        except GeminiError as e:
+        except Exception as e:
             return AgentResult(
                 agent=self.name,
                 score=0,
                 confidence="Low",
-                reasons=[f"{self.name} failed: {str(e)[:140]}"],
-                ok=False,
-            )
-        except Exception as e:  # safety net
-            return AgentResult(
-                agent=self.name,
-                score=0,
-                confidence="Low",
-                reasons=[f"{self.name} failed: {type(e).__name__}"],
+                reasons=[f"Gemini failed: {str(e)[:100]}"],
                 ok=False,
             )
 
         score = int(verdict.get("risk_score", 0))
-        confidence = str(verdict.get("confidence", "Low"))
-        reasons = list(verdict.get("reasons", []))
+        reasoning = str(verdict.get("reasoning", "")).strip()
+        advice_hi = str(verdict.get("advice_hindi", "")).strip()
+        local_scam = str(verdict.get("scam_type_local", "")).strip()
 
-        # Keep reasons tight so this agent doesn't dominate the combined output.
-        reasons = [r for r in reasons if isinstance(r, str) and r.strip()][0:8]
+        reasons: list[str] = []
+        if reasoning:
+            reasons.append(reasoning)
+        if local_scam:
+            reasons.append(f"Type: {local_scam}")
+        if advice_hi:
+            reasons.append(f"🇮🇳 Hindi Advice: {advice_hi}")
 
         return AgentResult(
             agent=self.name,
             score=max(0, min(100, score)),
-            confidence=confidence if confidence in {"Low", "Medium", "High"} else "Low",
-            reasons=reasons,
+            confidence=str(verdict.get("confidence", "Medium")),
+            reasons=reasons[:8],
             ok=True,
         )

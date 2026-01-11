@@ -33,6 +33,8 @@ class AnalyzeResponse(BaseModel):
     reasons: list[str]
     recommended_action: str
     agent_results: list[AgentBreakdown] | None = None
+    audio_analysis: dict | None = None
+    report_data: dict | None = None
 
 
 class FeedbackRequest(BaseModel):

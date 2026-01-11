@@ -11,6 +11,8 @@ type AnalyzeResponse = {
     confidence: "Low" | "Medium" | "High";
     summary: string;
     recommendations: string[];
+    advice_hindi?: string;
+    category?: string;
   };
   agents: Array<{
     name: string;
@@ -18,6 +20,7 @@ type AnalyzeResponse = {
     finding: string;
     signals: string[];
   }>;
+  report_data?: Record<string, unknown> | null;
 };
 
 function labelBadge(label: AnalyzeResponse["overall"]["label"]) {
@@ -53,6 +56,7 @@ function formatLabel(label: AnalyzeResponse["overall"]["label"]) {
 export default function Home() {
   const [text, setText] = useState("");
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [showScreenshot, setShowScreenshot] = useState(false);
@@ -64,8 +68,8 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canAnalyze = useMemo(
-    () => (text.trim().length > 0 || !!imageFile || !!uploadedImageUrl) && !isLoading && !isUploading,
-    [text, isLoading, isUploading, imageFile, uploadedImageUrl]
+    () => (text.trim().length > 0 || !!imageFile || !!uploadedImageUrl || !!audioFile) && !isLoading && !isUploading,
+    [text, isLoading, isUploading, imageFile, uploadedImageUrl, audioFile]
   );
 
   useEffect(() => {
@@ -113,6 +117,19 @@ export default function Home() {
     }
   }
 
+  async function pasteFromClipboard() {
+    try {
+      const clip = await navigator.clipboard.readText();
+      if (clip && clip.trim()) {
+        setText(clip);
+        setError(null);
+        setResult(null);
+      }
+    } catch {
+      setError("Clipboard access blocked by the browser. Paste manually.");
+    }
+  }
+
   async function onAnalyze() {
     setError(null);
     setResult(null);
@@ -128,10 +145,14 @@ export default function Home() {
         setUploadedImageUrl(uploaded.secureUrl);
       }
 
+      const formData = new FormData();
+      if (text.trim()) formData.append("text", text);
+      if (image_url) formData.append("image_url", image_url);
+      if (audioFile) formData.append("audio_file", audioFile);
+
       const res = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, image_url }),
+        body: formData,
       });
 
       const data = (await res.json()) as unknown;
@@ -230,7 +251,18 @@ export default function Home() {
                   Paste the full message. Include links, phone numbers, and payment instructions.
                 </p>
               </div>
-              <div className="text-xs text-muted-foreground">{text.length.toLocaleString()} chars</div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="h-9 rounded-full border border-border bg-card px-4 text-xs font-medium text-foreground shadow-sm hover:bg-muted disabled:opacity-50"
+                  onClick={pasteFromClipboard}
+                  disabled={isLoading || isUploading}
+                  title="Paste from clipboard"
+                >
+                  Paste
+                </button>
+                <div className="text-xs text-muted-foreground">{text.length.toLocaleString()} chars</div>
+              </div>
             </div>
 
             <label className="sr-only" htmlFor="message">
@@ -354,6 +386,59 @@ export default function Home() {
               ) : null}
             </div>
 
+            {/* --- AUDIO UPLOAD SECTION --- */}
+            <div className="mb-6 mt-4">
+              <label className="mb-2 block text-sm font-semibold text-foreground">
+                🎤 Upload Voice Note / Audio <span className="text-muted-foreground">(Optional)</span>
+              </label>
+              <div className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-muted p-3 transition-colors hover:bg-muted/80">
+                <div className="rounded-full bg-violet-500/10 p-2 text-violet-700 dark:text-violet-300">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                </div>
+
+                <input
+                  type="file"
+                  accept="audio/*"
+                  disabled={isLoading || isUploading}
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) setAudioFile(e.target.files[0]);
+                  }}
+                  className="block w-full cursor-pointer text-sm text-muted-foreground file:mr-4 file:rounded-full file:border-0 file:bg-foreground file:px-4 file:py-2 file:text-sm file:font-semibold file:text-background hover:file:opacity-95"
+                />
+
+                {audioFile ? (
+                  <button
+                    type="button"
+                    className="h-9 rounded-full border border-border bg-card px-4 text-xs font-medium hover:bg-muted"
+                    onClick={() => setAudioFile(null)}
+                    disabled={isLoading || isUploading}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+
+              <p className="mt-2 text-xs text-muted-foreground">
+                Detects “Digital Arrest”, “FedEx Customs”, and “Fake Police” calls.
+              </p>
+            </div>
+
             <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -370,9 +455,11 @@ export default function Home() {
                   setText("");
                   setImageFile(null);
                   setUploadedImageUrl(null);
+                  setAudioFile(null);
                   setShowScreenshot(false);
                   setResult(null);
                   setError(null);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
                 }}
                 disabled={isLoading}
               >
@@ -471,6 +558,72 @@ export default function Home() {
                         <li key={r}>{r}</li>
                       ))}
                     </ul>
+                  </div>
+
+                  {/* --- HINDI ADVICE & REPORT SECTION --- */}
+                  <div className="mt-6 space-y-4">
+                    {result.overall.advice_hindi ? (
+                      <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4">
+                        <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+                          🇮🇳 सलाह (Hindi Advice)
+                        </h3>
+                        <p className="text-base font-medium leading-relaxed text-foreground">
+                          {result.overall.advice_hindi}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    {result.overall.score > 75 ? (
+                      <div className="animate-pulse-once rounded-2xl border border-red-500/25 bg-red-500/10 p-4 text-red-700 dark:text-red-300">
+                        <div className="mb-3 flex items-center gap-3">
+                          <span className="text-2xl">🚨</span>
+                          <div>
+                            <h3 className="font-semibold">High Risk Detected</h3>
+                            <p className="text-sm opacity-90">You should report this immediately.</p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const category =
+                              (typeof result.overall.category === "string" && result.overall.category.trim())
+                                ? result.overall.category.trim()
+                                : "Fraud";
+
+                            const evidence = text.trim()
+                              ? text.trim()
+                              : audioFile
+                              ? `Audio provided: ${audioFile.name}`
+                              : imageFile || uploadedImageUrl
+                              ? "Image provided"
+                              : "Audio/Image provided";
+
+                            const draft =
+                              `SUBJECT: Reporting ${category} Attempt\n\n` +
+                              `I want to report a suspicious message/call.\n\n` +
+                              `EVIDENCE:\n${evidence}\n\n` +
+                              `AI ANALYSIS:\n` +
+                              `Risk Score: ${result.overall.score}/100\n` +
+                              `Summary: ${result.overall.summary}\n\n` +
+                              `Please investigate.`;
+
+                            try {
+                              await navigator.clipboard.writeText(draft);
+                            } catch {
+                              // fallback to existing helper
+                              await copyToClipboard(draft);
+                            }
+
+                            window.open("https://cybercrime.gov.in", "_blank");
+                            alert("Report Draft Copied! Opening Official Portal...");
+                          }}
+                          className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-600 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700"
+                        >
+                          Copy Report & Open CyberCrime.gov.in
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 

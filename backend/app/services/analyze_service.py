@@ -17,6 +17,8 @@ def _hash_request(redacted: AnalyzeRequest) -> str:
         "image_url": redacted.image_url or "",
         # base64 could be large; keep exact-match semantics but avoid dumping bytes into DB.
         "image_base64": (redacted.image_base64 or "")[:64],
+        "audio_url": redacted.audio_url or "",
+        "audio_base64": (redacted.audio_base64 or "")[:64],
         "metadata": (redacted.metadata.model_dump() if redacted.metadata else {}),
     }
     blob = json.dumps(stable, ensure_ascii=False, sort_keys=True)

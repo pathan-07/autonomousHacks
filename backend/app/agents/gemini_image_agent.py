@@ -54,43 +54,40 @@ class GeminiImageAgent(BaseAgent):
                 model=self.model,
                 image_base64_list=images,
             )
-        except GeminiError as e:
-            return AgentResult(
-                agent=self.name,
-                score=0,
-                confidence="Low",
-                reasons=[f"{self.name} failed: {str(e)[:160]}"],
-                ok=False,
-            )
         except Exception as e:
             return AgentResult(
                 agent=self.name,
                 score=0,
                 confidence="Low",
-                reasons=[f"{self.name} failed: {type(e).__name__}"],
+                reasons=[f"Gemini failed: {str(e)[:100]}"],
                 ok=False,
             )
 
         score = int(verdict.get("risk_score", 0))
-        category = str(verdict.get("category", "")).strip()
         reasoning = str(verdict.get("reasoning", "")).strip()
-        advice = str(verdict.get("advice", "")).strip()
+        advice_en = str(verdict.get("advice", "")).strip()
+        advice_hi = str(verdict.get("advice_hindi", "")).strip()
+        local_scam = str(verdict.get("scam_type_local", "")).strip()
+        category = str(verdict.get("category", "")).strip()
 
         reasons: list[str] = []
-        if category or reasoning:
-            combined = (f"{category}: {reasoning}" if category else reasoning).strip()
-            if combined:
-                reasons.append(combined)
-        if advice:
-            reasons.append(f"Advice: {advice}")
+        if reasoning:
+            reasons.append(reasoning)
+        if category and category != "Legitimate":
+            reasons.append(f"Category: {category}")
+        if local_scam:
+            reasons.append(f"Scam Type: {local_scam}")
+        if advice_en:
+            reasons.append(f"Advice: {advice_en}")
+        if advice_hi:
+            reasons.append(f"🇮🇳 Hindi Advice: {advice_hi}")
 
-        reasons = [r for r in reasons if isinstance(r, str) and r.strip()][0:8]
         confidence = "High" if score >= 70 else "Medium" if score >= 35 else "Low"
 
         return AgentResult(
             agent=self.name,
             score=max(0, min(100, score)),
-            confidence=confidence if confidence in {"Low", "Medium", "High"} else "Low",
-            reasons=reasons,
+            confidence=confidence,
+            reasons=reasons[:10],
             ok=True,
         )

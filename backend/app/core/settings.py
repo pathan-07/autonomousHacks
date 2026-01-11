@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-2.5-flash"
+    gemini_audio_model: str = "gemini-1.5-flash"
     gemini_models: str | None = None
     gemini_max_models: int = 3
     gemini_temperature: float = 0.2

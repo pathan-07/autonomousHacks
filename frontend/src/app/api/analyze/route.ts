@@ -15,8 +15,11 @@ type AnalyzeResponse = {
     confidence: "Low" | "Medium" | "High";
     summary: string;
     recommendations: string[];
+    advice_hindi?: string;
+    category?: string;
   };
   agents: AgentResult[];
+  report_data?: Record<string, unknown> | null;
 };
 
 type BackendAnalyzeResponse = {
@@ -25,6 +28,8 @@ type BackendAnalyzeResponse = {
   confidence: "Low" | "Medium" | "High";
   reasons: string[];
   recommended_action: string;
+  report_data?: Record<string, unknown> | null;
+  audio_analysis?: Record<string, unknown> | null;
   agent_results?: Array<{
     agent: string;
     score: number;
@@ -242,26 +247,43 @@ function analyzeText(rawText: string): AnalyzeResponse {
 }
 
 export async function POST(req: Request) {
-  let payload: unknown;
-  try {
-    payload = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  const contentType = req.headers.get("content-type") || "";
+
+  let text = "";
+  let imageUrl = "";
+  let audioFile: File | null = null;
+
+  if (contentType.toLowerCase().includes("multipart/form-data")) {
+    const form = await req.formData();
+    const t = form.get("text");
+    const iu = form.get("image_url");
+    const af = form.get("audio_file");
+
+    text = typeof t === "string" ? t : "";
+    imageUrl = typeof iu === "string" ? iu : "";
+    audioFile = af instanceof File ? af : null;
+  } else {
+    let payload: unknown;
+    try {
+      payload = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+
+    text =
+      typeof (payload as { text?: unknown })?.text === "string"
+        ? ((payload as { text: string }).text as string)
+        : "";
+
+    imageUrl =
+      typeof (payload as { image_url?: unknown })?.image_url === "string"
+        ? ((payload as { image_url: string }).image_url as string)
+        : "";
   }
 
-  const text =
-    typeof (payload as { text?: unknown })?.text === "string"
-      ? ((payload as { text: string }).text as string)
-      : "";
-
-  const imageUrl =
-    typeof (payload as { image_url?: unknown })?.image_url === "string"
-      ? ((payload as { image_url: string }).image_url as string)
-      : "";
-
-  if (text.trim().length === 0 && imageUrl.trim().length === 0) {
+  if (text.trim().length === 0 && imageUrl.trim().length === 0 && !audioFile) {
     return NextResponse.json(
-      { error: "Missing 'text' or 'image_url'" },
+      { error: "Missing 'text', 'image_url', or 'audio_file'" },
       { status: 400 }
     );
   }
@@ -273,23 +295,33 @@ export async function POST(req: Request) {
     );
   }
 
-  // --- HACKATHON FIX: Hardcoded Backend URL ---
-  // Avoid defaulting to localhost in production.
-  const BACKEND_URL = "https://scamshield-backend-457750343726.us-central1.run.app";
+  // Backend URL resolution:
+  // - Local dev: use localhost by default.
+  // - Prod: allow env override; fallback to the deployed Cloud Run URL.
+  const BACKEND_URL =
+    process.env.BACKEND_URL ||
+    (process.env.NODE_ENV === "development"
+      ? "http://127.0.0.1:8000"
+      : "https://scamshield-backend-457750343726.us-central1.run.app");
 
   // Extract links so backend can run link signals.
   const links = text.match(/https?:\/\/[^\s)\]}>\"]+/gi) ?? [];
 
   try {
+    const fd = new FormData();
+    if (text.trim()) fd.append("text", text);
+    if (imageUrl.trim()) fd.append("image_url", imageUrl);
+    if (links.length) fd.append("links", JSON.stringify(links));
+    if (audioFile) fd.append("audio_file", audioFile, audioFile.name || "audio");
+
     const resp = await fetch(`${BACKEND_URL}/analyze`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         ...(process.env.BACKEND_API_KEY
           ? { "X-API-Key": process.env.BACKEND_API_KEY }
           : {}),
       },
-      body: JSON.stringify({ text, links, image_url: imageUrl || undefined }),
+      body: fd,
     });
 
     if (!resp.ok) {
@@ -330,6 +362,14 @@ export async function POST(req: Request) {
       ? [backend.recommended_action]
       : [];
 
+    const inferredCategory =
+      (typeof (backend.report_data as { category?: unknown } | undefined)?.category === "string"
+        ? ((backend.report_data as { category: string }).category as string)
+        : "") ||
+      (typeof (backend.audio_analysis as { category?: unknown } | undefined)?.category === "string"
+        ? ((backend.audio_analysis as { category: string }).category as string)
+        : "");
+
     return NextResponse.json({
       requestId: crypto.randomUUID(),
       overall: {
@@ -338,6 +378,7 @@ export async function POST(req: Request) {
         confidence: backend.confidence,
         summary,
         recommendations,
+        ...(inferredCategory ? { category: inferredCategory } : {}),
       },
       agents: [
         {
@@ -347,13 +388,22 @@ export async function POST(req: Request) {
           signals: reasons,
         },
       ],
+      report_data: backend.report_data ?? null,
     } satisfies AnalyzeResponse);
   } catch (e) {
+    const details = e instanceof Error ? e.message : String(e);
+
+    // Optional dev-only fallback to local heuristics.
+    if (process.env.ALLOW_LOCAL_HEURISTICS === "1" && text.trim().length > 0) {
+      return NextResponse.json(analyzeText(text));
+    }
+
     // If backend isn't running, surface a clear error instead of silently returning wrong results.
     return NextResponse.json(
       {
         error:
           "Backend unavailable. Start it from backend/ with: .\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --port 8000",
+        details: details.slice(0, 200),
       },
       { status: 502 }
     );
