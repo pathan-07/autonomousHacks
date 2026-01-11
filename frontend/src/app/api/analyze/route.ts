@@ -273,17 +273,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // Prefer the Python backend (Gemini + orchestration). This keeps the frontend thin.
-  const backendUrl = (process.env.BACKEND_URL ?? "http://127.0.0.1:8000").replace(
-    /\/$/,
-    ""
-  );
+  // --- HACKATHON FIX: Hardcoded Backend URL ---
+  // Avoid defaulting to localhost in production.
+  const BACKEND_URL = "https://scamshield-backend-457750343726.us-central1.run.app";
 
   // Extract links so backend can run link signals.
   const links = text.match(/https?:\/\/[^\s)\]}>\"]+/gi) ?? [];
 
   try {
-    const resp = await fetch(`${backendUrl}/analyze`, {
+    const resp = await fetch(`${BACKEND_URL}/analyze`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
